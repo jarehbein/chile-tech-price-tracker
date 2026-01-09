@@ -7,62 +7,78 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+import time
 
-# Configuracion
-URL_PRODUCTO = 'https://www.pcfactory.cl/producto/52424-logitech-teclado-gamer-inalambrico-pro-x-tkl-lightspeed-rgb-mecanico--negro?origin=PCF'
-# Usamos la clase que encontraste en la inspeccion
+# --- CONFIGURACION MASIVA ---
+# Ahora usamos una lista de diccionarios. Puedes agregar cuantos quieras.
+PRODUCTOS = [
+    {
+        "nombre": "Teclado Logitech",
+        "url": "https://www.pcfactory.cl/producto/52424-logitech-teclado-gamer-inalambrico-pro-x-tkl-lightspeed-rgb-mecanico--negro?origin=PCF"
+    },
+    {
+        "nombre": "Cable USB-C a Lightning 2m Blanco Apple", 
+        "url": "https://www.pcfactory.cl/producto/43220-apple-cable-usb-c-a-lightning-2m-blanco-apple?origin=PCF" 
+    },
+
+]
+
 CLASE_PRECIO = "detail__prices__cash" 
 
-def rastrear_precio_selenium():
-    print(f"Iniciando navegador para: {URL_PRODUCTO}")
+def rastrear_todos():
+    print(f"Iniciando rastreo de {len(PRODUCTOS)} productos...")
     
-    # Configuracion del navegador
     options = Options()
-    # options.add_argument("--headless") # Descomentar esto despues para que no abra la ventana
     options.add_argument("--disable-blink-features=AutomationControlled") 
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-    # Inicializar Chrome
+    # Abrimos el navegador UNA sola vez para todo el proceso (mas eficiente)
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
+    listado_datos = []
+
     try:
-        driver.get(URL_PRODUCTO)
-        
-        # Espera explicita: Le decimos al script "Espera hasta 10 segundos a que aparezca el precio"
-        # Esto es crucial porque PC Factory carga lento
-        elemento_precio = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CLASS_NAME, CLASE_PRECIO))
-        )
-        
-        # Si llegamos aqui, encontro el elemento
-        texto_precio = elemento_precio.text
-        
-        # Limpieza ($199.990 -> 199990)
-        precio_limpio = int(texto_precio.replace('$', '').replace('.', '').replace('CLP', '').strip())
-        
-        print(f"EXITO - Precio detectado: {precio_limpio}")
-        
-        # Guardar datos
-        nuevo_dato = {
-            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "tienda": "PC Factory",
-            "precio": precio_limpio,
-            "url": URL_PRODUCTO
-        }
-        
-        df = pd.DataFrame([nuevo_dato])
-        escribir_header = not pd.io.common.file_exists("precios.csv")
-        df.to_csv("precios.csv", mode='a', header=escribir_header, index=False)
-        print("Datos guardados en CSV.")
+        for item in PRODUCTOS:
+            print(f"--- Revisando: {item['nombre']} ---")
+            
+            driver.get(item['url'])
+            
+            try:
+                # Esperamos a que cargue el precio
+                elemento = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CLASS_NAME, CLASE_PRECIO))
+                )
+                
+                precio_texto = elemento.text
+                precio_limpio = int(precio_texto.replace('$', '').replace('.', '').replace('CLP', '').strip())
+                
+                print(f"Precio: ${precio_limpio}")
+                
+                listado_datos.append({
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "tienda": "PC Factory",
+                    "producto": item['nombre'],
+                    "precio": precio_limpio,
+                    "url": item['url']
+                })
+                
+                # Pausa humana de 2 segundos para no parecer robot loco
+                time.sleep(2)
+                
+            except Exception as e:
+                print(f"Error con {item['nombre']}: {e}")
+
+        # Guardar todo junto al final
+        if listado_datos:
+            df = pd.DataFrame(listado_datos)
+            escribir_header = not pd.io.common.file_exists("precios.csv")
+            df.to_csv("precios.csv", mode='a', header=escribir_header, index=False)
+            print("Todos los datos guardados en precios.csv")
 
     except Exception as e:
-        print(f"Error durante la ejecucion: {e}")
-        # Tip de depuracion: Si falla, toma un screenshot para ver que vio el bot
-        driver.save_screenshot("debug_error.png")
-        print("Se guardo una captura de pantalla del error como debug_error.png")
-        
+        print(f"Error general: {e}")
     finally:
         driver.quit()
 
 if __name__ == "__main__":
-    rastrear_precio_selenium()
+    rastrear_todos()
