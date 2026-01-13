@@ -8,6 +8,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 import time
+import logging
+import os
 
 # --- CONFIGURACION MASIVA ---
 # Ahora usamos una lista de diccionarios. Puedes agregar cuantos quieras.
@@ -23,10 +25,23 @@ PRODUCTOS = [
 
 ]
 
-CLASE_PRECIO = "detail__prices__cash" 
+CLASE_PRECIO = "detail__prices__cash"
+
+# --- CONFIGURACION DE LOGGING ---
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f'logs/scraper_{datetime.now().strftime("%Y%m%d")}.log'),
+        logging.StreamHandler()  # También muestra en consola
+    ]
+) 
 
 def rastrear_todos():
-    print(f"Iniciando rastreo de {len(PRODUCTOS)} productos...")
+    logging.info(f"=== INICIANDO RASTREO DE {len(PRODUCTOS)} PRODUCTOS ===")
     
     options = Options()
     options.add_argument("--disable-blink-features=AutomationControlled") 
@@ -39,7 +54,7 @@ def rastrear_todos():
 
     try:
         for item in PRODUCTOS:
-            print(f"--- Revisando: {item['nombre']} ---")
+            logging.info(f"Revisando: {item['nombre']}")
             
             driver.get(item['url'])
             
@@ -52,7 +67,7 @@ def rastrear_todos():
                 precio_texto = elemento.text
                 precio_limpio = int(precio_texto.replace('$', '').replace('.', '').replace('CLP', '').strip())
                 
-                print(f"Precio: ${precio_limpio}")
+                logging.info(f"Precio obtenido: ${precio_limpio:,}")
                 
                 listado_datos.append({
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -66,19 +81,22 @@ def rastrear_todos():
                 time.sleep(2)
                 
             except Exception as e:
-                print(f"Error con {item['nombre']}: {e}")
+                logging.error(f"Error con {item['nombre']}: {e}")
 
         # Guardar todo junto al final
         if listado_datos:
             df = pd.DataFrame(listado_datos)
             escribir_header = not pd.io.common.file_exists("precios.csv")
             df.to_csv("precios.csv", mode='a', header=escribir_header, index=False)
-            print("Todos los datos guardados en precios.csv")
+            logging.info(f"{len(listado_datos)} registros guardados en precios.csv")
+        else:
+            logging.warning("No se obtuvieron datos para guardar")
 
     except Exception as e:
-        print(f"Error general: {e}")
+        logging.error(f"Error general: {e}", exc_info=True)
     finally:
         driver.quit()
+        logging.info("=== RASTREO FINALIZADO ===\n")
 
 if __name__ == "__main__":
     rastrear_todos()
